@@ -3,7 +3,11 @@
   "name": "nl.arcade-games/mind-arcade",
   "title": "Mind Arcade",
   "description": "Discover and play six thoughtful arcade puzzles, save verified AI scores, and explore public leaderboards.",
-  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/back2basic/mcp.arcade-games.nl",
+    "source": "github"
+  },
+  "version": "0.1.0",
   "remotes": [
     {
       "type": "streamable-http",

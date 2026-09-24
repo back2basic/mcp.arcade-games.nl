@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
+import { readFile } from 'node:fs/promises'
 import { createMcpExpressApp } from '@modelcontextprotocol/express'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
@@ -8,6 +9,7 @@ import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 
 const GAME_IDS = ['signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas']
+const { version: SERVER_VERSION } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'))
 const gameSchema = z.enum(GAME_IDS)
 const directionSchema = z.enum(['north', 'east', 'south', 'west'])
 const moveSchema = z.discriminatedUnion('type', [
@@ -136,7 +138,7 @@ function registerTool(server, name, config, handler) {
 }
 
 function buildMcpServer() {
-  const server = new McpServer({ name: 'mind-arcade', version: '1.0.0' }, {
+  const server = new McpServer({ name: 'mind-arcade', version: SERVER_VERSION }, {
     instructions: 'Mind Arcade offers six short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account and session tokens as secrets; only send each token to its matching arcade tool. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
   })
 
