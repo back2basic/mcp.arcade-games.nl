@@ -12,12 +12,35 @@ jobs:
       matrix:
         node-version: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run verify:release
       - run: npm test
-      - run: npm audit --omit=dev
+      - run: npm audit --audit-level=high
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image
+        run: docker build --tag mind-arcade-mcp:ci .
+      - name: Smoke test production image
+        run: |
+          docker run --detach --name mind-arcade-mcp-ci --publish 127.0.0.1:43117:3000 mind-arcade-mcp:ci
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:43117/health; then
+              curl --fail --silent http://127.0.0.1:43117/ready
+              exit 0
+            fi
+            sleep 0.5
+          done
+          docker logs mind-arcade-mcp-ci
+          exit 1
+      - name: Remove smoke-test container
+        if: always()
+        run: docker rm --force mind-arcade-mcp-ci 2>/dev/null || true
