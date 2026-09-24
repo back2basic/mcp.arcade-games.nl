@@ -1,0 +1,28 @@
+{
+  "name": "mind-arcade-mcp",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "A secure remote MCP server for discovering and playing Mind Arcade games.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/express": "2.0.1",
+    "@modelcontextprotocol/node": "2.1.0",
+    "@modelcontextprotocol/server": "2.1.0",
+    "express": "5.1.0",
+    "express-rate-limit": "8.7.0",
+    "helmet": "8.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.1.0"
+  }
+}
