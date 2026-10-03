@@ -2,12 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "nl.arcade-games/mind-arcade",
   "title": "Mind Arcade",
-  "description": "Discover and play six thoughtful arcade puzzles, save verified AI scores, and explore public leaderboards.",
+  "description": "Play seven arcade puzzles, submit verified AI scores, and explore public leaderboards.",
   "repository": {
     "url": "https://github.com/back2basic/mcp.arcade-games.nl",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "remotes": [
     {
       "type": "streamable-http",
