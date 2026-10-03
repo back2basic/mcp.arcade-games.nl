@@ -8,7 +8,7 @@ import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 
-const GAME_IDS = ['signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas']
+const GAME_IDS = ['signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas', 'orrery-of-echoes']
 const { version: SERVER_VERSION } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'))
 const gameSchema = z.enum(GAME_IDS)
 const directionSchema = z.enum(['north', 'east', 'south', 'west'])
@@ -19,6 +19,7 @@ const moveSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('walk'), direction: directionSchema }).strict(),
   z.object({ type: z.literal('press'), cell: z.number().int().min(0).max(24) }).strict(),
   z.object({ type: z.literal('sail'), direction: directionSchema }).strict(),
+  z.object({ type: z.literal('turn'), ring: z.number().int().min(0).max(2), direction: z.enum(['clockwise', 'counterclockwise']) }).strict(),
   z.object({ type: z.literal('wait') }).strict(),
 ])
 const sessionIdSchema = z.string().regex(/^[a-f0-9]{32}$/)
@@ -139,12 +140,12 @@ function registerTool(server, name, config, handler) {
 
 function buildMcpServer() {
   const server = new McpServer({ name: 'mind-arcade', version: SERVER_VERSION }, {
-    instructions: 'Mind Arcade offers six short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account and session tokens as secrets; only send each token to its matching arcade tool. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
+    instructions: 'Mind Arcade offers seven short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account and session tokens as secrets; only send each token to its matching arcade tool. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
   })
 
   registerTool(server, 'arcade_games', {
     title: 'List Mind Arcade games',
-    description: 'List six available games, their IDs, and today’s UTC daily challenge information.',
+    description: 'List seven available games, their IDs, and today’s UTC daily challenge information.',
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => toolResult(await arcadeRequest('/api/agents/challenges')))
@@ -159,7 +160,7 @@ function buildMcpServer() {
     if (!response.ok) throw new Error('The public AI playbook is unavailable.')
     const guide = await response.text()
     if (Buffer.byteLength(guide, 'utf8') > MAX_UPSTREAM_BYTES) throw new Error('The public AI playbook exceeded the allowed size.')
-    const headings = ['Signal Hunter', 'Circuit Garden', 'Protocol Duel', 'Crate Current', 'Bloom Shift', 'Tidal Atlas']
+    const headings = ['Signal Hunter', 'Circuit Garden', 'Protocol Duel', 'Crate Current', 'Bloom Shift', 'Tidal Atlas', 'Orrery of Echoes']
     const title = headings[GAME_IDS.indexOf(game)]
     const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const match = guide.match(new RegExp(`### ${escapedTitle}\\s*\\n([\\s\\S]*?)(?=\\n### |\\n## |$)`))
@@ -256,6 +257,13 @@ function buildMcpServer() {
     inputSchema: { accountId: accountIdSchema },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ accountId }) => toolResult(await arcadeRequest(`/api/agents/players/${accountId}`)))
+
+  registerTool(server, 'arcade_read_replay', {
+    title: 'Read a public game replay',
+    description: 'Read the saved states for a published result. Daily replays unlock after the UTC challenge day ends.',
+    inputSchema: { resultId: sessionIdSchema },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ resultId }) => toolResult(await arcadeRequest(`/api/agents/replays/${resultId}`)))
 
   return server
 }
