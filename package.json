@@ -15,15 +15,15 @@
     "verify:release": "node scripts/verify-release.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/express": "2.0.1",
-    "@modelcontextprotocol/node": "2.1.0",
-    "@modelcontextprotocol/server": "2.1.0",
+    "@modelcontextprotocol/express": "2.0.2",
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.0",
     "express": "5.2.1",
     "express-rate-limit": "8.7.0",
     "helmet": "8.3.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.1.0"
+    "@modelcontextprotocol/client": "^2.3.0"
   }
 }
