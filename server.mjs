@@ -35,6 +35,7 @@ const SUBMIT_SCORES = process.env.ALLOW_SCORE_SUBMISSION === 'true'
 const REQUESTS_PER_MINUTE = Number(process.env.MCP_REQUESTS_PER_MINUTE ?? 120)
 const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 1)
 const MAX_UPSTREAM_BYTES = 1_000_000
+const MAX_TOOL_INPUT_ELEMENTS = 64
 
 function requiredNumber(name, value, min, max) {
   if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer from ${min} to ${max}.`)
@@ -141,6 +142,7 @@ function registerTool(server, name, config, handler) {
 function buildMcpServer() {
   const server = new McpServer({ name: 'mind-arcade', version: SERVER_VERSION }, {
     instructions: 'Mind Arcade offers seven short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account and session tokens as secrets; only send each token to its matching arcade tool. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
+    maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
   })
 
   registerTool(server, 'arcade_games', {

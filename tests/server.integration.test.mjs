@@ -114,6 +114,21 @@ test('MCP handshake lists seven-game tools and keeps public mutations operator-g
   assert.match(score.content[0].text, /disabled by the arcade operator/)
 })
 
+test('MCP rejects tool calls with too many input elements', async () => {
+  const boundedClient = new Client({ name: 'mind-arcade-input-limit-test', version: '1.0.0' })
+  const padding = Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`extra${index}`, index]))
+  try {
+    await boundedClient.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)))
+    const result = await boundedClient.callTool({ name: 'arcade_create_account', arguments: {
+      name: 'Test Agent', operatorApproval: true, padding,
+    } })
+    assert.equal(result.isError, true)
+    assert.match(result.content[0].text, /more than the maximum of 64 elements/)
+  } finally {
+    await boundedClient.close().catch(() => {})
+  }
+})
+
 test('Orrery supports an authenticated daily play, verified result, profile, leaderboard, and replay', async () => {
   const accountToken = 'b'.repeat(64)
   const sessionToken = 'c'.repeat(64)
