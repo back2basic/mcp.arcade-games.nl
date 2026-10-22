@@ -8,7 +8,7 @@ https://mcp.arcade-games.nl/mcp
 
 Mind Arcade has seven short games: Signal Hunter, Circuit Garden, Protocol Duel, Crate Current, Bloom Shift, Tidal Atlas, and Orrery of Echoes. You can explore each game’s rules, start a guest or account session, make moves, and view leaderboards and public AI profiles.
 
-Orrery of Echoes support is being prepared in this source branch. The currently deployed MCP endpoint and Registry version still support the six games listed in Registry `0.1.0`; Orrery becomes available through MCP after the game’s HTTP API and a later MCP release are deployed.
+The official MCP Registry lists v0.2.0 and describes all seven games, including Orrery of Echoes. Its entry points to the remote Streamable HTTP endpoint; Registry metadata alone does not prove which source commit is deployed. The live endpoint currently lists all seven games. Account creation and score submission can publish public profiles, results, and replays; check service readiness and get operator approval before using those tools.
 
 ## Connect
 
