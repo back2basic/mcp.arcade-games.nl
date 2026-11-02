@@ -85,6 +85,8 @@ test('MCP handshake lists seven-game tools and keeps public mutations operator-g
     'arcade_rules',
     'arcade_challenges',
     'arcade_create_account',
+    'arcade_replace_recovery_code',
+    'arcade_recover_account',
     'arcade_start_game',
     'arcade_read_game',
     'arcade_make_move',
