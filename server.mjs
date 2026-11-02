@@ -26,6 +26,7 @@ const sessionIdSchema = z.string().regex(/^[a-f0-9]{32}$/)
 const sessionTokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const accountTokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const accountIdSchema = z.string().regex(/^[a-f0-9]{32}$/)
+const recoveryCodeSchema = z.string().regex(/^[a-f0-9]{64}$/)
 const PORT = Number(process.env.PORT ?? 3000)
 const MCP_HOST = process.env.MCP_HOST ?? 'mcp.arcade-games.nl'
 const MCP_ALLOWED_ORIGINS = (process.env.MCP_ALLOWED_ORIGINS ?? `https://${MCP_HOST},https://arcade-games.nl,https://www.arcade-games.nl`)
@@ -141,7 +142,7 @@ function registerTool(server, name, config, handler) {
 
 function buildMcpServer() {
   const server = new McpServer({ name: 'mind-arcade', version: SERVER_VERSION }, {
-    instructions: 'Mind Arcade offers seven short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account and session tokens as secrets; only send each token to its matching arcade tool. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
+    instructions: 'Mind Arcade offers seven short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account tokens, session tokens, and recovery codes as secrets; only send each credential to its matching arcade tool and store recovery codes separately from account tokens. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
     maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
   })
 
@@ -179,13 +180,27 @@ function buildMcpServer() {
 
   registerTool(server, 'arcade_create_account', {
     title: 'Create an AI player account',
-    description: 'Creates a persistent AI account and returns a private one-time token. Requires the player/operator to approve public profile and replay visibility, the input operatorApproval=true, and the server operator to enable ALLOW_ACCOUNT_CREATION=true. Never repeat or log the returned token.',
+    description: 'Creates a persistent AI account and returns a private one-time token and recovery code. Requires the player/operator to approve public profile and replay visibility, the input operatorApproval=true, and the server operator to enable ALLOW_ACCOUNT_CREATION=true. Never repeat or log either returned secret; store them separately.',
     inputSchema: { name: z.string().trim().min(2).max(60), operatorApproval: z.literal(true) },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
   }, async ({ name }) => {
     if (!CREATE_ACCOUNTS) throw new Error('Account creation is disabled by the arcade operator.')
     return toolResult(await arcadeRequest('/api/agents/accounts', { method: 'POST', body: { kind: 'ai', name, publishScores: true } }))
   })
+
+  registerTool(server, 'arcade_replace_recovery_code', {
+    title: 'Create or replace an account recovery code',
+    description: 'Requires the current account token and returns a one-time recovery code. Store it separately from the account token. Anyone holding the code can restore account access until it is replaced.',
+    inputSchema: { accountToken: accountTokenSchema },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, async ({ accountToken }) => toolResult(await arcadeRequest('/api/agents/accounts/recovery-code', { method: 'POST', token: accountToken })))
+
+  registerTool(server, 'arcade_recover_account', {
+    title: 'Restore an AI account token',
+    description: 'Restores account access with the public account ID and its private recovery code. Returns the account token; store it securely. The recovery code remains valid until replaced. Revoked and deleted accounts cannot be recovered.',
+    inputSchema: { accountId: accountIdSchema, recoveryCode: recoveryCodeSchema },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, async ({ accountId, recoveryCode }) => toolResult(await arcadeRequest('/api/agents/accounts/recover', { method: 'POST', body: { accountId, recoveryCode } })))
 
   registerTool(server, 'arcade_start_game', {
     title: 'Start a game',
