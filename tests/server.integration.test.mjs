@@ -74,7 +74,7 @@ test('DNS rebinding guard rejects an unconfigured Host header', async () => {
   assert.equal(response.statusCode, 403)
 })
 
-test('MCP handshake lists seven-game tools and keeps public mutations operator-gated', async () => {
+test('MCP handshake lists all eight games, keeps Common Ground unranked, and gates public mutations', async () => {
   client = new Client({ name: 'mind-arcade-integration-test', version: '1.0.0' })
   transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`))
   await client.connect(transport)
@@ -97,13 +97,20 @@ test('MCP handshake lists seven-game tools and keeps public mutations operator-g
   ])
   const gameTool = tools.find(tool => tool.name === 'arcade_start_game')
   assert.deepEqual(gameTool.inputSchema.properties.game.enum, [
-    'signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas', 'orrery-of-echoes',
+    'signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas', 'orrery-of-echoes', 'common-ground',
   ])
   const moveTool = tools.find(tool => tool.name === 'arcade_make_move')
   assert.match(JSON.stringify(moveTool.inputSchema), /"turn"/)
   assert.match(JSON.stringify(moveTool.inputSchema), /"clockwise"/)
   assert.match(JSON.stringify(moveTool.inputSchema), /"counterclockwise"/)
   assert.match(JSON.stringify(moveTool.inputSchema), /"ring"/)
+  assert.match(JSON.stringify(moveTool.inputSchema), /resolve-year/)
+  assert.match(JSON.stringify(moveTool.inputSchema), /farmers/)
+  const leaderboardTool = tools.find(tool => tool.name === 'arcade_leaderboard')
+  assert.equal(leaderboardTool.inputSchema.properties.game.enum.includes('common-ground'), false)
+  const commonDaily = await client.callTool({ name: 'arcade_start_game', arguments: { game: 'common-ground', mode: 'daily' } })
+  assert.equal(commonDaily.isError, true)
+  assert.match(commonDaily.content[0].text, /free-play only/)
 
   const account = await client.callTool({ name: 'arcade_create_account', arguments: { name: 'Test Agent', operatorApproval: true } })
   assert.equal(account.isError, true)
@@ -137,11 +144,19 @@ test('Orrery supports an authenticated daily play, verified result, profile, lea
   const sessionId = 'a'.repeat(32)
   const requests = []
   let moveCount = 0
+  let activeGame = 'orrery-of-echoes'
   const dailyMoves = [
     ...Array.from({ length: 6 }, () => ({ type: 'turn', ring: 1, direction: 'counterclockwise' })),
     ...Array.from({ length: 3 }, () => ({ type: 'turn', ring: 2, direction: 'clockwise' })),
   ]
   const state = (count = moveCount) => {
+    if (activeGame === 'common-ground') return {
+      sessionId, game: 'common-ground', ranked: false, mode: 'free', day: null, name: 'Common Ground Test AI',
+      revision: count, expiresAt: '2026-09-26T00:00:00.000Z', status: 'playing', energy: 6 - count, score: 0,
+      yearsRemaining: 6 - count, settlementStatus: 'playing', year: count + 1, maxYears: 6, forecast: 'calm',
+      forecasts: ['calm', 'flood', 'drought', 'calm', 'flood', 'calm'], population: 4, housing: 4, trust: 58, watershed: 72,
+      resources: { food: 7, timber: 4, stone: 2 }, settlementCell: '2,2', cells: [], reports: [], history: [],
+    }
     const positions = [3, 6, 15]
     for (const move of dailyMoves.slice(0, count)) {
       const delta = move.direction === 'clockwise' ? 1 : -1
@@ -172,11 +187,11 @@ test('Orrery supports an authenticated daily play, verified result, profile, lea
     }
     if (request.method === 'GET' && request.url === '/llms.txt') {
       response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
-      response.end('### Orrery of Echoes\n\nThree linked rings, each with 24 positions numbered 0–23; target is [0,0,0]. A clockwise turn advances the chosen ring and moves its linked neighbor counterclockwise.\n\nMove: {"type":"turn","ring":0,"direction":"clockwise"}. Win score: 1000 + 40 * remaining turns.\n')
+      response.end('### Orrery of Echoes\n\nThree linked rings, each with 24 positions numbered 0–23; target is [0,0,0]. A clockwise turn advances the chosen ring and moves its linked neighbor counterclockwise.\n\nMove: {"type":"turn","ring":0,"direction":"clockwise"}. Win score: 1000 + 40 * remaining turns.\n\n### Common Ground\n\nSix-year unranked free play.\n\nMove: {"type":"resolve-year","orders":[],"workers":{"farmers":[],"foresters":[],"stewards":0}}.\n')
       return
     }
     if (request.method === 'POST' && request.url === '/api/agents/accounts') return send(201, { accountId: 'd'.repeat(32), name: 'Orrery Test AI', token: accountToken })
-    if (request.method === 'POST' && request.url === '/api/agents/sessions') return send(201, { ...state(), token: sessionToken })
+    if (request.method === 'POST' && request.url === '/api/agents/sessions') { activeGame = body.game; moveCount = 0; return send(201, { ...state(), token: sessionToken }) }
     if (request.method === 'GET' && request.url === `/api/agents/sessions/${sessionId}`) return send(200, state())
     if (request.method === 'POST' && request.url === `/api/agents/sessions/${sessionId}/moves`) {
       moveCount += 1
@@ -247,11 +262,31 @@ test('Orrery supports an authenticated daily play, verified result, profile, lea
     assert.deepEqual(replay.frames.at(-1).positions, [0, 0, 0])
     assert.equal(replay.score, 1160)
 
+    const commonRules = await testClient.callTool({ name: 'arcade_rules', arguments: { game: 'common-ground' } })
+    assert.notEqual(commonRules.isError, true, commonRules.content?.[0]?.text)
+    assert.match(commonRules.content[0].text, /Six-year unranked free play/)
+    const commonStart = decode(await testClient.callTool({ name: 'arcade_start_game', arguments: { game: 'common-ground', mode: 'free' } }))
+    assert.deepEqual(commonStart, { ...state(0), token: sessionToken })
+    const commonMove = decode(await testClient.callTool({ name: 'arcade_make_move', arguments: {
+      sessionId, sessionToken, revision: 0,
+      move: { type: 'resolve-year', orders: [], workers: { farmers: ['2,1'], foresters: ['1,1'], stewards: 0 } },
+    } }))
+    assert.equal(commonMove.game, 'common-ground')
+    assert.equal(commonMove.revision, 1)
+    assert.equal(commonMove.year, 2)
+    assert.equal(commonMove.ranked, false)
+    const commonDaily = await testClient.callTool({ name: 'arcade_start_game', arguments: { game: 'common-ground', mode: 'daily', accountToken } })
+    assert.equal(commonDaily.isError, true)
+    assert.match(commonDaily.content[0].text, /free-play only/)
+    const commonBoard = await testClient.callTool({ name: 'arcade_leaderboard', arguments: { game: 'common-ground', mode: 'daily' } })
+    assert.equal(commonBoard.isError, true)
+
     const startRequest = requests.find(entry => entry.method === 'POST' && entry.url === '/api/agents/sessions')
     assert.equal(startRequest.authorization, `Bearer ${accountToken}`)
     assert.deepEqual(startRequest.body, { kind: 'ai', game: 'orrery-of-echoes', mode: 'daily', name: 'MCP guest' })
-    const moveRequest = requests.find(entry => entry.method === 'POST' && entry.url.endsWith('/moves'))
-    const lastMoveRequest = requests.filter(entry => entry.method === 'POST' && entry.url.endsWith('/moves')).at(-1)
+    const orreryMoveRequests = requests.filter(entry => entry.method === 'POST' && entry.url.endsWith('/moves') && entry.body?.move?.type === 'turn')
+    const moveRequest = orreryMoveRequests[0]
+    const lastMoveRequest = orreryMoveRequests.at(-1)
     assert.equal(moveRequest.authorization, `Bearer ${sessionToken}`)
     assert.deepEqual(moveRequest.body, { revision: 0, move: dailyMoves[0] })
     assert.deepEqual(lastMoveRequest.body, { revision: 8, move: dailyMoves[8] })

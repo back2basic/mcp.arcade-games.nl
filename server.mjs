@@ -8,9 +8,11 @@ import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 
-const GAME_IDS = ['signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas', 'orrery-of-echoes']
+const GAME_IDS = ['signal-hunter', 'circuit-garden', 'protocol-duel', 'crate-current', 'bloom-shift', 'tidal-atlas', 'orrery-of-echoes', 'common-ground']
+const RANKED_GAME_IDS = GAME_IDS.filter(game => game !== 'common-ground')
 const { version: SERVER_VERSION } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'))
 const gameSchema = z.enum(GAME_IDS)
+const rankedGameSchema = z.enum(RANKED_GAME_IDS)
 const directionSchema = z.enum(['north', 'east', 'south', 'west'])
 const moveSchema = z.discriminatedUnion('type', [
   z.object({ type: z.enum(['distance', 'bearing', 'pulse', 'locate']), x: z.number().int().min(0).max(7), y: z.number().int().min(0).max(7) }).strict(),
@@ -21,6 +23,19 @@ const moveSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('sail'), direction: directionSchema }).strict(),
   z.object({ type: z.literal('turn'), ring: z.number().int().min(0).max(2), direction: z.enum(['clockwise', 'counterclockwise']) }).strict(),
   z.object({ type: z.literal('wait') }).strict(),
+  z.object({
+    type: z.literal('resolve-year'),
+    orders: z.array(z.object({
+      type: z.literal('build'),
+      building: z.enum(['farm', 'lumberYard', 'levee', 'commons']),
+      cell: z.string().regex(/^[0-4],[0-4]$/),
+    }).strict()).max(2),
+    workers: z.object({
+      farmers: z.array(z.string().regex(/^[0-4],[0-4]$/)).max(10),
+      foresters: z.array(z.string().regex(/^[0-4],[0-4]$/)).max(10),
+      stewards: z.number().int().min(0).max(10),
+    }).strict(),
+  }).strict(),
 ])
 const sessionIdSchema = z.string().regex(/^[a-f0-9]{32}$/)
 const sessionTokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
@@ -142,13 +157,13 @@ function registerTool(server, name, config, handler) {
 
 function buildMcpServer() {
   const server = new McpServer({ name: 'mind-arcade', version: SERVER_VERSION }, {
-    instructions: 'Mind Arcade offers seven short puzzle games. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account tokens, session tokens, and recovery codes as secrets; only send each credential to its matching arcade tool and store recovery codes separately from account tokens. Guest play is available without an account. Daily attempts require an account and allow one attempt per game per UTC day.',
+    instructions: 'Mind Arcade offers eight browser games. Common Ground is a six-year unranked free-play settlement charter; it has no daily mode, leaderboard, score submission, or public replay. The other seven games support ranked daily challenges and verified score submission. Ask the player or operator before creating an account or publishing a score. Those actions may be disabled by the server operator. Public score submission makes the chosen name, score, and accepted game moves visible on a public profile. Treat account tokens, session tokens, and recovery codes as secrets; only send each credential to its matching arcade tool and store recovery codes separately from account tokens. Guest play is available without an account. Daily attempts require an account and allow one attempt per ranked game per UTC day.',
     maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
   })
 
   registerTool(server, 'arcade_games', {
     title: 'List Mind Arcade games',
-    description: 'List seven available games, their IDs, and today’s UTC daily challenge information.',
+    description: 'List all eight playable games, their IDs, and today’s UTC challenge information. Common Ground is free-play only and unranked.',
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => toolResult(await arcadeRequest('/api/agents/challenges')))
@@ -163,7 +178,7 @@ function buildMcpServer() {
     if (!response.ok) throw new Error('The public AI playbook is unavailable.')
     const guide = await response.text()
     if (Buffer.byteLength(guide, 'utf8') > MAX_UPSTREAM_BYTES) throw new Error('The public AI playbook exceeded the allowed size.')
-    const headings = ['Signal Hunter', 'Circuit Garden', 'Protocol Duel', 'Crate Current', 'Bloom Shift', 'Tidal Atlas', 'Orrery of Echoes']
+    const headings = ['Signal Hunter', 'Circuit Garden', 'Protocol Duel', 'Crate Current', 'Bloom Shift', 'Tidal Atlas', 'Orrery of Echoes', 'Common Ground']
     const title = headings[GAME_IDS.indexOf(game)]
     const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const match = guide.match(new RegExp(`### ${escapedTitle}\\s*\\n([\\s\\S]*?)(?=\\n### |\\n## |$)`))
@@ -204,7 +219,7 @@ function buildMcpServer() {
 
   registerTool(server, 'arcade_start_game', {
     title: 'Start a game',
-    description: 'Start guest free play, or authenticated free/daily play. Daily mode requires an account token and resumes that account’s current UTC-day attempt.',
+    description: 'Start guest free play, or authenticated free/daily play. Common Ground is free-play only and unranked; daily mode is available for the other seven games and requires an account token.',
     inputSchema: {
       game: gameSchema,
       mode: z.enum(['free', 'daily']).default('free'),
@@ -212,9 +227,12 @@ function buildMcpServer() {
       accountToken: accountTokenSchema.optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-  }, async ({ game, mode, name, accountToken }) => toolResult(await arcadeRequest('/api/agents/sessions', {
-    method: 'POST', token: accountToken, body: { kind: 'ai', game, mode, name },
-  })))
+  }, async ({ game, mode, name, accountToken }) => {
+    if (game === 'common-ground' && mode === 'daily') throw new Error('Common Ground is free-play only and has no daily challenge.')
+    return toolResult(await arcadeRequest('/api/agents/sessions', {
+      method: 'POST', token: accountToken, body: { kind: 'ai', game, mode, name },
+    }))
+  })
 
   registerTool(server, 'arcade_read_game', {
     title: 'Read the current game state',
@@ -239,7 +257,7 @@ function buildMcpServer() {
 
   registerTool(server, 'arcade_submit_score', {
     title: 'Publish a verified score',
-    description: 'Publishes the account name, verified result, and game-move replay on a public profile. Requires explicit player/operator approval, operatorApproval=true, account ownership, and ALLOW_SCORE_SUBMISSION=true on the server.',
+    description: 'Publishes the account name, verified result, and game-move replay on a public profile. Common Ground is unranked and cannot submit scores. For other games, this requires explicit player/operator approval, operatorApproval=true, account ownership, and ALLOW_SCORE_SUBMISSION=true on the server.',
     inputSchema: {
       sessionId: sessionIdSchema,
       accountToken: accountTokenSchema,
@@ -258,7 +276,7 @@ function buildMcpServer() {
     title: 'Read an AI leaderboard',
     description: 'Read the free-play or UTC daily leaderboard for one game.',
     inputSchema: {
-      game: gameSchema,
+      game: rankedGameSchema,
       mode: z.enum(['free', 'daily']).default('daily'),
       day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     },
