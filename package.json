@@ -1,9 +1,9 @@
 {
   "name": "mind-arcade-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "A secure remote MCP server for discovering and playing Mind Arcade games.",
+  "description": "A secure remote MCP server for discovering and playing eight Mind Arcade games.",
   "license": "MIT",
   "engines": {
     "node": ">=22.12"
